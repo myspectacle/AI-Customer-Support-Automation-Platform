@@ -1,0 +1,343 @@
+{
+  "name": "05 - Feedback Collection & Support Analytics",
+  "nodes": [
+    {
+      "id": "27061a05-c7de-4541-a08e-f3ef0652aa57",
+      "name": "Schedule - Daily 9AM (Feedback)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "686647e8-567c-4132-8d89-59f813046c38",
+      "name": "Google Sheets - Get Resolved (No Feedback)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        460,
+        200
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tickets",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "Resolved"
+            },
+            {
+              "lookupColumn": "feedback_sent",
+              "lookupValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "847c8b31-39c6-4fb7-92bf-b008376545ff",
+      "name": "Gmail - Send Feedback Survey",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        200
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$json.customer_email}}",
+        "subject": "=How did we do on ticket {{$json.ticket_id}}?",
+        "message": "=Hi {{$json.customer_name}},<br><br>We'd love to hear how we handled your recent request. Please rate your experience: https://forms.gle/feedback-form?ticket={{$json.ticket_id}}<br><br>Thanks!<br>Support Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "GMAIL_CRED_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "0f0bd901-782d-479f-938d-584b0a7b9ebb",
+      "name": "Schedule - Weekly Monday 8AM (Report)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        460
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "5a5138cf-2a88-4453-9dff-41322c6ad94b",
+      "name": "Google Sheets - Get All Tickets (This Week)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        460,
+        460
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tickets",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "c24a5381-dbc0-492b-8e5e-463f86d83dc6",
+      "name": "Compute Weekly Analytics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        460
+      ],
+      "parameters": {
+        "jsCode": "const rows = items.map(i => i.json);\nconst total = rows.length;\nconst resolved = rows.filter(r => r.status === 'Resolved').length;\nconst byPriority = rows.reduce((acc, r) => {\n  acc[r.priority || 'Unclassified'] = (acc[r.priority || 'Unclassified'] || 0) + 1;\n  return acc;\n}, {});\nconst byCategory = rows.reduce((acc, r) => {\n  acc[r.category || 'Unclassified'] = (acc[r.category || 'Unclassified'] || 0) + 1;\n  return acc;\n}, {});\nreturn [{\n  json: {\n    total_tickets: total,\n    resolved_tickets: resolved,\n    resolution_rate: total ? ((resolved / total) * 100).toFixed(1) + '%' : '0%',\n    by_priority: JSON.stringify(byPriority),\n    by_category: JSON.stringify(byCategory),\n    generated_at: new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "f5996c34-d80d-45dd-ba1f-0827b96d2233",
+      "name": "Gmail - Send Weekly Report to Manager",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        900,
+        460
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "support-manager@company.com",
+        "subject": "=Weekly Support Analytics Report - {{$now.format('yyyy-MM-dd')}}",
+        "message": "=<h3>Weekly Support Summary</h3><ul><li>Total tickets: {{$json.total_tickets}}</li><li>Resolved: {{$json.resolved_tickets}}</li><li>Resolution rate: {{$json.resolution_rate}}</li><li>By priority: {{$json.by_priority}}</li><li>By category: {{$json.by_category}}</li></ul>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "GMAIL_CRED_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "c26e1f1d-8a11-4d33-abab-2c3b58126e83",
+      "name": "Recover Ticket Data After Feedback Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        900,
+        200
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e02a947f-41b3-4e19-b10d-f8a6ea5fa662",
+              "name": "ticket_id",
+              "type": "string",
+              "value": "={{$('Google Sheets - Get Resolved (No Feedback)').item.json.ticket_id}}"
+            },
+            {
+              "id": "65d9545c-f16c-4b53-a62f-96ae10f20f93",
+              "name": "feedback_sent",
+              "type": "string",
+              "value": "Yes"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "042a902a-bbfb-4f3b-8a1f-e704a1e992f9",
+      "name": "Google Sheets - Mark Feedback Sent",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1120,
+        200
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tickets",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "ticket_id"
+          ],
+          "value": {
+            "ticket_id": "={{$json.ticket_id}}",
+            "feedback_sent": "={{$json.feedback_sent}}"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule - Daily 9AM (Feedback)": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Get Resolved (No Feedback)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Get Resolved (No Feedback)": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Send Feedback Survey",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule - Weekly Monday 8AM (Report)": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Get All Tickets (This Week)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Get All Tickets (This Week)": {
+      "main": [
+        [
+          {
+            "node": "Compute Weekly Analytics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Weekly Analytics": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Send Weekly Report to Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Send Feedback Survey": {
+      "main": [
+        [
+          {
+            "node": "Recover Ticket Data After Feedback Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recover Ticket Data After Feedback Email": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Mark Feedback Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "capstone-ai-support-platform"
+  },
+  "tags": [
+    "capstone",
+    "customer-support",
+    "analytics"
+  ]
+}

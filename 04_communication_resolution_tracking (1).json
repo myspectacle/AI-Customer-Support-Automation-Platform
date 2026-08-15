@@ -1,0 +1,368 @@
+{
+  "name": "04 - Customer Communication & Resolution Tracking",
+  "nodes": [
+    {
+      "id": "bab2a0d1-e793-4d88-b2d3-67dc514d380c",
+      "name": "Webhook - Agent Status Update",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "update-ticket-status",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "0da7d150-7806-46a9-84da-eb1bb3e3e857",
+      "name": "IF - Status is Resolved",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "92c2f75d-11e0-4897-8ecc-14a6b2dff0d2",
+              "leftValue": "={{$json.body.status}}",
+              "rightValue": "Resolved",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "dadad4ef-f803-4997-93c3-9ebac1f7989f",
+      "name": "Gmail - Send Resolution Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        200
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$json.body.customer_email}}",
+        "subject": "=Your ticket {{$json.body.ticket_id}} has been resolved",
+        "message": "=Hi {{$json.body.customer_name}},<br><br>Good news \u2014 your support ticket <b>{{$json.body.ticket_id}}</b> has been marked as resolved.<br><br>Resolution notes: {{$json.body.resolution_notes}}<br><br>We'd love your feedback \u2014 you'll receive a short survey shortly.<br><br>Support Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "GMAIL_CRED_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "3074ad49-6632-4b3c-bb4e-fc01e1d93242",
+      "name": "Gmail - Send Status Update Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        420
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$json.body.customer_email}}",
+        "subject": "=Update on your ticket {{$json.body.ticket_id}}",
+        "message": "=Hi {{$json.body.customer_name}},<br><br>Your ticket status has been updated to: <b>{{$json.body.status}}</b>.<br><br>Agent notes: {{$json.body.resolution_notes}}<br><br>Support Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "GMAIL_CRED_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "13ca2edf-a156-4879-81ee-8d3c3c40f918",
+      "name": "Google Sheets - Update Ticket Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1010,
+        300
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tickets",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "ticket_id"
+          ],
+          "value": {
+            "ticket_id": "={{$json.body.ticket_id}}",
+            "status": "={{$json.body.status}}",
+            "resolution_notes": "={{$json.body.resolution_notes}}",
+            "resolved_at": "={{$json.body.status === 'Resolved' ? $now.toISO() : ''}}"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "8e3e80a0-8aa7-44fe-b459-6b5c233862a3",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1230,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"updated\" } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "3021c0b1-7922-46cd-bf9e-6ae7df19cf0a",
+      "name": "Recover Ticket Data After Resolution Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        790,
+        140
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d906738b-f323-4aef-8d92-f4ba66a256ff",
+              "name": "ticket_id",
+              "type": "string",
+              "value": "={{$('IF - Status is Resolved').item.json.body.ticket_id}}"
+            },
+            {
+              "id": "b83479ef-02fc-414f-a162-cc149494c503",
+              "name": "customer_name",
+              "type": "string",
+              "value": "={{$('IF - Status is Resolved').item.json.body.customer_name}}"
+            },
+            {
+              "id": "6838a4fe-fb14-4b2f-9b83-81284a9fa6f9",
+              "name": "customer_email",
+              "type": "string",
+              "value": "={{$('IF - Status is Resolved').item.json.body.customer_email}}"
+            },
+            {
+              "id": "140db5d6-ef43-4a6f-a112-424e445120c2",
+              "name": "status",
+              "type": "string",
+              "value": "={{$('IF - Status is Resolved').item.json.body.status}}"
+            },
+            {
+              "id": "0ea384a0-25ca-4341-a947-5207a34152e0",
+              "name": "resolution_notes",
+              "type": "string",
+              "value": "={{$('IF - Status is Resolved').item.json.body.resolution_notes}}"
+            },
+            {
+              "id": "458ced12-e46c-49e8-9dec-8b33399c9240",
+              "name": "resolved_at",
+              "type": "string",
+              "value": "={{$now.toISO()}}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c42ba149-a160-4408-ae42-76a6a8446eed",
+      "name": "Recover Ticket Data After Status Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        790,
+        460
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4663365f-a2d1-468e-a2e3-955f75104b15",
+              "name": "ticket_id",
+              "type": "string",
+              "value": "={{$('IF - Status is Resolved').item.json.body.ticket_id}}"
+            },
+            {
+              "id": "fa8b4847-41ab-420c-9855-1f9d1ce3a898",
+              "name": "customer_name",
+              "type": "string",
+              "value": "={{$('IF - Status is Resolved').item.json.body.customer_name}}"
+            },
+            {
+              "id": "2c0cb921-f58f-43df-afab-173bb2553972",
+              "name": "customer_email",
+              "type": "string",
+              "value": "={{$('IF - Status is Resolved').item.json.body.customer_email}}"
+            },
+            {
+              "id": "5a019009-cda3-476c-9fbc-f4c16aa76e72",
+              "name": "status",
+              "type": "string",
+              "value": "={{$('IF - Status is Resolved').item.json.body.status}}"
+            },
+            {
+              "id": "231c1a26-fd6d-4861-baa8-749c5c201f2c",
+              "name": "resolution_notes",
+              "type": "string",
+              "value": "={{$('IF - Status is Resolved').item.json.body.resolution_notes}}"
+            },
+            {
+              "id": "63984039-c644-4f7d-b08c-97b8d2d2a445",
+              "name": "resolved_at",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook - Agent Status Update": {
+      "main": [
+        [
+          {
+            "node": "IF - Status is Resolved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Status is Resolved": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Send Resolution Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail - Send Status Update Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Send Resolution Email": {
+      "main": [
+        [
+          {
+            "node": "Recover Ticket Data After Resolution Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Send Status Update Email": {
+      "main": [
+        [
+          {
+            "node": "Recover Ticket Data After Status Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Update Ticket Status": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recover Ticket Data After Resolution Email": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Update Ticket Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recover Ticket Data After Status Email": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Update Ticket Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "capstone-ai-support-platform"
+  },
+  "tags": [
+    "capstone",
+    "customer-support",
+    "resolution"
+  ]
+}

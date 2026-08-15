@@ -1,0 +1,218 @@
+{
+  "name": "02 - AI Ticket Classification & Prioritization",
+  "nodes": [
+    {
+      "id": "aae8fc83-d04d-4c5a-b0f3-5c372e78f082",
+      "name": "Schedule - Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "7fb8d743-10b5-43f4-8eba-b951b8e56955",
+      "name": "Google Sheets - Get New Tickets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tickets",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "New"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "57415468-daac-4d7d-a627-19a951a05a34",
+      "name": "OpenAI - Classify Ticket",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.6,
+      "position": [
+        680,
+        300
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a support-ticket triage assistant. Read the ticket and return STRICT JSON only, no prose, with keys: category (Billing|Technical|Account|General), priority (P1|P2|P3), sentiment (Positive|Neutral|Negative), summary (max 20 words)."
+            },
+            {
+              "role": "user",
+              "content": "=Subject: {{$json.subject}}\nMessage: {{$json.message}}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_CRED_ID",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "id": "aedb9219-effd-4ab7-93f7-f058589a2267",
+      "name": "Parse AI Classification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.message?.content || $input.first().json.content || '{}';\nlet parsed;\ntry {\n  const clean = raw.replace(/```json|```/g, '').trim();\n  parsed = JSON.parse(clean);\n} catch (e) {\n  parsed = { category: 'General', priority: 'P3', sentiment: 'Neutral', summary: 'Could not parse AI response' };\n}\nconst ticket = $('Google Sheets - Get New Tickets').item.json;\nreturn [{\n  json: {\n    ...ticket,\n    category: parsed.category,\n    priority: parsed.priority,\n    sentiment: parsed.sentiment,\n    ai_summary: parsed.summary,\n    status: 'Classified'\n  }\n}];"
+      }
+    },
+    {
+      "id": "bd065c44-da48-4dc9-a076-82a293054677",
+      "name": "Google Sheets - Update Classification",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1120,
+        300
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tickets",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "ticket_id"
+          ],
+          "value": {
+            "ticket_id": "={{$json.ticket_id}}",
+            "category": "={{$json.category}}",
+            "priority": "={{$json.priority}}",
+            "sentiment": "={{$json.sentiment}}",
+            "ai_summary": "={{$json.ai_summary}}",
+            "status": "={{$json.status}}"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule - Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Get New Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Get New Tickets": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - Classify Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Classify Ticket": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Classification": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Update Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "capstone-ai-support-platform"
+  },
+  "tags": [
+    "capstone",
+    "customer-support",
+    "ai"
+  ]
+}

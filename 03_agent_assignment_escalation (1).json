@@ -1,0 +1,298 @@
+{
+  "name": "03 - Agent Assignment & Escalation",
+  "nodes": [
+    {
+      "id": "f59828fd-8837-48e6-a218-fc9e611b9bfb",
+      "name": "Schedule - Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "55494e8e-b2a6-4fc6-bb20-a2e3471911eb",
+      "name": "Google Sheets - Get Classified Tickets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tickets",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "status",
+              "lookupValue": "Classified"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "a00f4229-402c-424a-9fa4-d7021ad812a4",
+      "name": "IF - Priority is P1 (Critical)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        680,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "a3d11ac6-adb8-43cc-a15b-9f9da0165e2a",
+              "leftValue": "={{$json.priority}}",
+              "rightValue": "P1",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "90e0cc5c-8e94-4bf8-8c5a-28a7dba8d04f",
+      "name": "Gmail - Escalate for Human Approval",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        900,
+        180
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "senior.agent@company.com",
+        "subject": "=P1 Critical Ticket Escalation - {{$json.ticket_id}}",
+        "message": "=A P1 critical support ticket needs senior review and approval.<br><br>Ticket ID: {{$json.ticket_id}}<br>Customer: {{$json.customer_name}}<br>Category: {{$json.category}}<br>Summary: {{$json.ai_summary}}<br><br>Please review and assign a senior agent.",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "GMAIL_CRED_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "6ada1abb-4414-4205-b546-2991d48d9d79",
+      "name": "Assign Agent (Round Robin)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        420
+      ],
+      "parameters": {
+        "jsCode": "const agents = ['agent1@company.com','agent2@company.com','agent3@company.com'];\nreturn items.map((item, i) => {\n  const idx = Math.floor(Math.random() * agents.length);\n  item.json.assigned_agent = agents[idx];\n  item.json.status = 'Assigned';\n  return item;\n});"
+      }
+    },
+    {
+      "id": "da9b1e4c-5806-40bf-b8aa-574edf1c3c69",
+      "name": "Google Sheets - Update Assignment",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1340,
+        300
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tickets",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [
+            "ticket_id"
+          ],
+          "value": {
+            "ticket_id": "={{$json.ticket_id}}",
+            "assigned_agent": "={{$json.assigned_agent || 'senior_team'}}",
+            "status": "={{$json.status || 'Escalated'}}"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "d9d84f4e-19ea-4cb0-bfec-bfc246106797",
+      "name": "Recover Ticket Data After Gmail",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        180
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e0015ae5-25f6-4cce-b90e-f567ab556601",
+              "name": "ticket_id",
+              "type": "string",
+              "value": "={{$('IF - Priority is P1 (Critical)').item.json.ticket_id}}"
+            },
+            {
+              "id": "78276425-3c14-4880-b293-d5d1df276dd3",
+              "name": "assigned_agent",
+              "type": "string",
+              "value": "senior_team"
+            },
+            {
+              "id": "4d1f4454-a58a-4174-8327-3c2c9124d0ef",
+              "name": "status",
+              "type": "string",
+              "value": "Escalated"
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Schedule - Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Get Classified Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Get Classified Tickets": {
+      "main": [
+        [
+          {
+            "node": "IF - Priority is P1 (Critical)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Priority is P1 (Critical)": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Escalate for Human Approval",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Assign Agent (Round Robin)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign Agent (Round Robin)": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Update Assignment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Escalate for Human Approval": {
+      "main": [
+        [
+          {
+            "node": "Recover Ticket Data After Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recover Ticket Data After Gmail": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Update Assignment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "capstone-ai-support-platform"
+  },
+  "tags": [
+    "capstone",
+    "customer-support",
+    "escalation"
+  ]
+}

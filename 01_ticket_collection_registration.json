@@ -1,0 +1,229 @@
+{
+  "name": "01 - Ticket Collection & Registration",
+  "nodes": [
+    {
+      "id": "0027f6ad-64f5-43d4-bb28-3d11710e0727",
+      "name": "Webhook - New Support Ticket",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "new-support-ticket",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "4a51ce60-b333-4d0c-a6e4-de4c068d11f3",
+      "name": "Normalize Ticket Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "291a28d7-0988-4e2d-a625-16a8a885e213",
+              "name": "ticket_id",
+              "type": "string",
+              "value": "=TCK-{{$now.format('yyyyMMdd-HHmmss')}}-{{Math.floor(Math.random()*1000)}}"
+            },
+            {
+              "id": "a42fce24-eddd-4d98-869b-6fea34426599",
+              "name": "customer_name",
+              "type": "string",
+              "value": "={{$json.body.name}}"
+            },
+            {
+              "id": "ecfe44cb-8906-49bc-a6a6-92fb45fbf2cb",
+              "name": "customer_email",
+              "type": "string",
+              "value": "={{$json.body.email}}"
+            },
+            {
+              "id": "216f6398-619c-4bd1-8cd1-7f6a2c8dfd99",
+              "name": "subject",
+              "type": "string",
+              "value": "={{$json.body.subject}}"
+            },
+            {
+              "id": "85b3b9ad-81a0-447a-9b6e-1bbb6a05b82b",
+              "name": "message",
+              "type": "string",
+              "value": "={{$json.body.message}}"
+            },
+            {
+              "id": "e19bec4e-2696-4b9c-bbad-6ba115eafbac",
+              "name": "channel",
+              "type": "string",
+              "value": "={{$json.body.channel || 'web_form'}}"
+            },
+            {
+              "id": "a5a3f447-149f-4426-8769-628a2593df1a",
+              "name": "status",
+              "type": "string",
+              "value": "New"
+            },
+            {
+              "id": "ab06fa01-016a-443b-8cc2-13b3477cd673",
+              "name": "created_at",
+              "type": "string",
+              "value": "={{$now.toISO()}}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e0aad0dd-c401-4b8b-ad8c-0cd34b38282f",
+      "name": "Google Sheets - Append Ticket",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        680,
+        300
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Tickets",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ticket_id": "={{$json.ticket_id}}",
+            "customer_name": "={{$json.customer_name}}",
+            "customer_email": "={{$json.customer_email}}",
+            "subject": "={{$json.subject}}",
+            "message": "={{$json.message}}",
+            "channel": "={{$json.channel}}",
+            "status": "={{$json.status}}",
+            "created_at": "={{$json.created_at}}"
+          }
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "id": "17451485-7f40-419a-a63c-27252e69ad66",
+      "name": "Gmail - Send Acknowledgement",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        900,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{$json.customer_email}}",
+        "subject": "=We received your request [{{$json.ticket_id}}]",
+        "message": "=Hi {{$json.customer_name}},<br><br>Thanks for reaching out. Your support ticket <b>{{$json.ticket_id}}</b> has been logged and our team will review it shortly.<br><br>Subject: {{$json.subject}}<br><br>We'll be in touch soon.<br><br>Support Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "GMAIL_CRED_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "178cc1d8-3f93-4bec-b861-ca2f9542f9cf",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"received\", \"ticket_id\": $json.ticket_id } }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook - New Support Ticket": {
+      "main": [
+        [
+          {
+            "node": "Normalize Ticket Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Ticket Data": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets - Append Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets - Append Ticket": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Send Acknowledgement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Send Acknowledgement": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "capstone-ai-support-platform"
+  },
+  "tags": [
+    "capstone",
+    "customer-support",
+    "intake"
+  ]
+}
